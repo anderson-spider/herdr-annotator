@@ -133,3 +133,30 @@ test("file statistics and comment locations make anchors legible", () => {
   assert.equal(commentLocation({ stale: true, anchor: { lines: { selection: { side: "old", start: 3, end: 3 } } } }), "Was old L3");
   assert.equal(commentLocation({ position: null }), "File comment");
 });
+
+import { overviewSummary, jobMark } from "../mods/annotator/review.js";
+
+test("MR overview summarizes approvals, missing approvers, and pipeline stages", () => {
+  const view = overviewSummary({
+    approvals: { approved: false, required: 2, left: 1, approved_by: ["alice"], missing: ["bob", "carol"] },
+    pipeline: { id: 7, status: "failed", url: "u", stages: [
+      { name: "build", status: "success", jobs: [{ name: "assemble", status: "success", url: "", allow_failure: false }] },
+      { name: "test", status: "failed", jobs: [{ name: "lint", status: "failed", url: "", allow_failure: true },
+        { name: "unit", status: "waiting_for_resource", url: "", allow_failure: false }] }] },
+    errors: [],
+  });
+  assert.deepEqual(view.approvals, { headline: "Needs approval · 1/2", tone: "ansi3", approvedBy: ["alice"], missing: ["bob", "carol"] });
+  assert.equal(view.pipeline.headline, "Pipeline #7 · failed");
+  assert.deepEqual(view.pipeline.stages.map(s => [s.name, s.mark, s.tone]), [["build", "✓", "ansi2"], ["test", "✗", "ansi1"]]);
+  assert.deepEqual(view.pipeline.stages[1].jobs.map(j => [j.status, j.allowFailure]), [["failed", true], ["pending", false]]);
+});
+
+test("an approved MR hides missing approvers and absent sections stay null", () => {
+  const view = overviewSummary({ approvals: { approved: true, required: 0, left: 0, approved_by: [], missing: ["x"] }, pipeline: null, errors: ["Pipeline unavailable: 403"] });
+  assert.equal(view.approvals.headline, "Approved · no approvals required");
+  assert.deepEqual(view.approvals.missing, []);
+  assert.equal(view.pipeline, null);
+  assert.deepEqual(view.errors, ["Pipeline unavailable: 403"]);
+  assert.equal(overviewSummary(null), null);
+  assert.equal(jobMark("success_with_warnings").mark, "✓");
+});

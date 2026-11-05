@@ -110,6 +110,11 @@ general MR discussions. Only `gitlab.com` is trusted by default; allow a
 self-hosted instance with `python3 scripts/install.py --gitlab-host gitlab.example.com`
 or `HERDR_ANNOTATOR_GITLAB_HOSTS`.
 
+On a GitLab MR the tab also shows a read-only overview above the threads: who approved,
+who is still missing (from the approval rules), and the latest pipeline with its stages
+and jobs. Sections GitLab refuses (tier or permissions) show a note and never block the
+threads.
+
 Read/unread markers and sent/resolved filters help you find remaining feedback.
 Export a review as text when you want to copy it elsewhere.
 

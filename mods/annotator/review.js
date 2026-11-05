@@ -326,3 +326,34 @@ export function savedBaseChoice(value) {
   }
   return { base: typeof value?.base === "string" ? value.base : null, explicit: value?.explicit === true };
 }
+
+const JOB_MARKS = { success: ["✓", "ansi2"], failed: ["✗", "ansi1"], running: ["●", "ansi3"],
+  manual: ["▶", "ansi4"], canceled: ["⊘", "muted"], skipped: ["–", "muted"], pending: ["○", "muted"] };
+
+export function jobMark(status) {
+  const key = status === "success_with_warnings" ? "success" : JOB_MARKS[status] ? status : "pending";
+  const [mark, tone] = JOB_MARKS[key];
+  return { mark, tone, status: key };
+}
+
+// Pure view model for the read-only GitLab MR overview (approvals and pipeline).
+export function overviewSummary(overview) {
+  if (!overview) return null;
+  const a = overview.approvals;
+  let approvals = null;
+  if (a) {
+    const given = Math.max(0, a.required - a.left);
+    const headline = a.approved
+      ? (a.required ? `Approved · ${given}/${a.required}` : "Approved · no approvals required")
+      : `Needs approval · ${given}/${a.required}`;
+    approvals = { headline, tone: a.approved ? "ansi2" : "ansi3",
+      approvedBy: a.approved_by ?? [], missing: a.approved ? [] : a.missing ?? [] };
+  }
+  const p = overview.pipeline;
+  const pipeline = p && {
+    headline: `Pipeline #${p.id} · ${p.status.replaceAll("_", " ")}`, tone: jobMark(p.status).tone, url: p.url,
+    stages: p.stages.map(stage => ({ name: stage.name, ...jobMark(stage.status),
+      jobs: stage.jobs.map(job => ({ name: job.name, url: job.url, allowFailure: job.allow_failure, ...jobMark(job.status) })) })),
+  };
+  return { approvals, pipeline, errors: overview.errors ?? [] };
+}

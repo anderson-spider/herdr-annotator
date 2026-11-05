@@ -4,6 +4,7 @@ use crate::{
     github::{GithubComment, GithubThread, PullRequest},
     model::hash,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::process::Command;
 
@@ -310,6 +311,215 @@ pub(crate) fn fetch(
         }
     }
     Ok((Some(pr), threads, limited))
+}
+
+/// Read-only merge request context shown above the review threads: who approved,
+/// who is still missing, and the latest pipeline with its stages and jobs.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MrOverview {
+    pub approvals: Option<Approvals>,
+    pub pipeline: Option<Pipeline>,
+    /// Sections GitLab would not return (permissions, tier); never fatal.
+    pub errors: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Approvals {
+    pub approved: bool,
+    pub required: u64,
+    pub left: u64,
+    pub approved_by: Vec<String>,
+    pub missing: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Pipeline {
+    pub id: u64,
+    pub status: String,
+    pub url: String,
+    pub stages: Vec<Stage>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Stage {
+    pub name: String,
+    pub status: String,
+    pub jobs: Vec<Job>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Job {
+    pub name: String,
+    pub status: String,
+    pub url: String,
+    pub allow_failure: bool,
+}
+
+const MAX_NAMES: usize = 20;
+const MAX_JOBS: usize = 500;
+const JOB_PAGES: usize = 5;
+
+fn text(value: &Value, limit: usize) -> String {
+    value.as_str().unwrap_or("").chars().take(limit).collect()
+}
+
+fn usernames(users: &Value) -> Vec<String> {
+    users
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|u| u["username"].as_str())
+        .map(|u| u.chars().take(100).collect())
+        .collect()
+}
+
+fn approvals(host: &str, base: &str, iid: u64) -> Result<Approvals> {
+    let a = get(host, format!("{base}/merge_requests/{iid}/approvals"), &[])?;
+    let approved_by: Vec<String> = a["approved_by"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|x| x["user"]["username"].as_str())
+        .map(|u| u.chars().take(100).collect())
+        .collect();
+    let required = a["approvals_required"].as_u64().unwrap_or(0);
+    let left = a["approvals_left"].as_u64().unwrap_or(0);
+    let mut missing: Vec<String> = vec![];
+    // Rules name the eligible approvers; without them (free tier) only counts are known.
+    if let Ok(state) = get(
+        host,
+        format!("{base}/merge_requests/{iid}/approval_state"),
+        &[],
+    ) {
+        for rule in state["rules"].as_array().into_iter().flatten() {
+            if rule["approved"].as_bool().unwrap_or(true)
+                || rule["approvals_required"].as_u64().unwrap_or(0) == 0
+            {
+                continue;
+            }
+            for user in usernames(&rule["eligible_approvers"]) {
+                if !approved_by.contains(&user) && !missing.contains(&user) {
+                    missing.push(user);
+                }
+            }
+        }
+    }
+    missing.truncate(MAX_NAMES);
+    Ok(Approvals {
+        approved: a["approved"].as_bool().unwrap_or(left == 0),
+        required,
+        left,
+        approved_by: approved_by.into_iter().take(MAX_NAMES).collect(),
+        missing,
+    })
+}
+
+fn stage_status(jobs: &[Job]) -> &'static str {
+    let any = |f: &dyn Fn(&Job) -> bool| jobs.iter().any(f);
+    if any(&|j| j.status == "failed" && !j.allow_failure) {
+        "failed"
+    } else if any(&|j| j.status == "running") {
+        "running"
+    } else if any(&|j| {
+        [
+            "created",
+            "pending",
+            "waiting_for_resource",
+            "preparing",
+            "scheduled",
+        ]
+        .contains(&j.status.as_str())
+    }) {
+        "pending"
+    } else if any(&|j| j.status == "manual") {
+        "manual"
+    } else if any(&|j| j.status == "canceled") {
+        "canceled"
+    } else if jobs.iter().all(|j| j.status == "skipped") {
+        "skipped"
+    } else {
+        "success"
+    }
+}
+
+fn pipeline(host: &str, base: &str, iid: u64) -> Result<Option<Pipeline>> {
+    let list = get(
+        host,
+        format!("{base}/merge_requests/{iid}/pipelines"),
+        &[("per_page", "1".into())],
+    )?;
+    let Some(raw) = list.as_array().and_then(|a| a.first()) else {
+        return Ok(None);
+    };
+    let id = raw["id"].as_u64().ok_or("Missing pipeline id")?;
+    let project_id = raw["project_id"]
+        .as_u64()
+        .ok_or("Missing pipeline project")?;
+    let mut jobs: Vec<(u64, String, Job)> = vec![];
+    for page in 1..=JOB_PAGES {
+        let result = get(
+            host,
+            format!("projects/{project_id}/pipelines/{id}/jobs"),
+            &[
+                ("per_page", PER_PAGE.to_string()),
+                ("page", page.to_string()),
+            ],
+        )?;
+        let batch = result.as_array().ok_or("Invalid GitLab jobs response")?;
+        for job in batch {
+            jobs.push((
+                job["id"].as_u64().unwrap_or(0),
+                text(&job["stage"], 100),
+                Job {
+                    name: text(&job["name"], 200),
+                    status: text(&job["status"], 40),
+                    url: text(&job["web_url"], 500),
+                    allow_failure: job["allow_failure"].as_bool().unwrap_or(false),
+                },
+            ));
+        }
+        if batch.len() < PER_PAGE || jobs.len() >= MAX_JOBS {
+            break;
+        }
+    }
+    jobs.truncate(MAX_JOBS);
+    // The API lists newest first; stages run in the order their first job was created.
+    jobs.sort_by_key(|(id, ..)| *id);
+    let mut stages: Vec<Stage> = vec![];
+    for (_, stage, job) in jobs {
+        match stages.iter_mut().find(|s| s.name == stage) {
+            Some(existing) => existing.jobs.push(job),
+            None => stages.push(Stage {
+                name: stage,
+                status: String::new(),
+                jobs: vec![job],
+            }),
+        }
+    }
+    for stage in &mut stages {
+        stage.status = stage_status(&stage.jobs).into();
+    }
+    Ok(Some(Pipeline {
+        id,
+        status: text(&raw["status"], 40),
+        url: text(&raw["web_url"], 500),
+        stages,
+    }))
+}
+
+/// Never fails the refresh: a section GitLab refuses is reported in `errors`.
+pub(crate) fn overview(pr: &PullRequest) -> MrOverview {
+    let base = project(&pr.repository);
+    let mut out = MrOverview::default();
+    match approvals(&pr.host, &base, pr.number) {
+        Ok(a) => out.approvals = Some(a),
+        Err(e) => out.errors.push(format!("Approvals unavailable: {e}")),
+    }
+    match pipeline(&pr.host, &base, pr.number) {
+        Ok(p) => out.pipeline = p,
+        Err(e) => out.errors.push(format!("Pipeline unavailable: {e}")),
+    }
+    out
 }
 
 /// `Ok(Some(url))` confirms the note; `Ok(None)` means no confirmation was returned.

@@ -94,6 +94,8 @@ pub struct GithubView {
     pub checked_at: Option<u64>,
     pub error: Option<String>,
     pub limited: bool,
+    #[serde(default)]
+    pub overview: Option<crate::gitlab::MrOverview>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -121,6 +123,8 @@ struct Document {
     replies: BTreeMap<String, ReplyReceipt>,
     #[serde(default)]
     provider: Option<String>,
+    #[serde(default)]
+    overview: Option<crate::gitlab::MrOverview>,
 }
 
 /// An explicit GitHub write, separate from delivering review instructions to hc.
@@ -320,6 +324,12 @@ impl Cache {
                 self.doc.pull_request = pr;
                 self.doc.threads = threads;
                 self.doc.limited = limited;
+                self.doc.overview = self
+                    .doc
+                    .pull_request
+                    .as_ref()
+                    .filter(|p| p.provider == "gitlab")
+                    .map(crate::gitlab::overview);
                 self.doc.error = None;
                 self.doc.checked_at = Some(now());
             }
@@ -340,6 +350,7 @@ impl Cache {
             checked_at: self.doc.checked_at,
             error: self.doc.error.clone(),
             limited: self.doc.limited,
+            overview: self.doc.overview.clone(),
             threads: self
                 .doc
                 .threads

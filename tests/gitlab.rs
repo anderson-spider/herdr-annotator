@@ -68,6 +68,15 @@ if a[0]=='api':
     if endpoint==f"projects/{project}/merge_requests/1/discussions":
         per,page=int(fields['per_page']),int(fields['page'])
         print(json.dumps(d['discussions'][(page-1)*per:page*per]));sys.exit(0)
+    for name in ('approvals','approval_state'):
+        if endpoint==f"projects/{project}/merge_requests/1/{name}" and name in d:
+            print(json.dumps(d[name]));sys.exit(0)
+    if endpoint==f"projects/{project}/merge_requests/1/pipelines" and 'pipelines' in d:
+        assert fields['per_page']=='1'
+        print(json.dumps(d['pipelines'][:1]));sys.exit(0)
+    if endpoint.startswith('projects/10/pipelines/') and endpoint.endswith('/jobs') and 'jobs' in d:
+        per,page=int(fields['per_page']),int(fields['page'])
+        print(json.dumps(d['jobs'][(page-1)*per:page*per]));sys.exit(0)
     if endpoint.startswith('projects/') and endpoint[9:] in d.get('projects',{}):
         print(json.dumps({'id':d['projects'][endpoint[9:]]}));sys.exit(0)
     print('glab: 404 Not Found',file=sys.stderr);sys.exit(1)
@@ -330,12 +339,12 @@ fn lost_reply_confirmation_is_not_automatically_reposted() {
 fn reads_are_cached_for_five_minutes_and_refresh_is_immediate() {
     let f = Fixture::new();
     f.request(json!({"op":"github"}));
-    // MR lookup, MR details, one discussions page.
-    assert_eq!(f.calls("api").len(), 3);
+    // MR lookup, MR details, one discussions page, approvals and pipelines.
+    assert_eq!(f.calls("api").len(), 5);
     f.request(json!({"op":"github"}));
-    assert_eq!(f.calls("api").len(), 3);
+    assert_eq!(f.calls("api").len(), 5);
     f.request(json!({"op":"github","force":true}));
-    assert_eq!(f.calls("api").len(), 6);
+    assert_eq!(f.calls("api").len(), 10);
     assert_eq!(f.calls("send").len(), 0);
 }
 
@@ -600,4 +609,86 @@ fn vanished_threads_are_reported_in_merge_request_terms() {
     let error = reply["error"].as_str().unwrap();
     assert!(error.contains("this MR"), "{error}");
     assert_eq!(f.posts(), 0);
+}
+
+fn job(id: u64, stage: &str, name: &str, status: &str, allow_failure: bool) -> Value {
+    json!({"id":id,"stage":stage,"name":name,"status":status,"allow_failure":allow_failure,
+        "web_url":format!("https://gitlab.com/group/repo/-/jobs/{id}")})
+}
+
+#[test]
+fn overview_lists_approvers_missing_approvers_and_pipeline_stages() {
+    let f = Fixture::new();
+    f.update(|d| {
+        d["approvals"] = json!({"approved":false,"approvals_required":2,"approvals_left":1,
+            "approved_by":[{"user":{"username":"alice"}}]});
+        d["approval_state"] = json!({"rules":[
+            {"approved":false,"approvals_required":2,"eligible_approvers":[{"username":"alice"},{"username":"bob"},{"username":"carol"}]},
+            {"approved":true,"approvals_required":1,"eligible_approvers":[{"username":"dave"}]}]});
+        d["pipelines"] = json!([{"id":7,"project_id":10,"status":"failed","web_url":"https://gitlab.com/group/repo/-/pipelines/7"}]);
+        // The API returns newest first.
+        d["jobs"] = json!([
+            job(40, "deploy", "ship", "skipped", false),
+            job(30, "test", "lint", "failed", true),
+            job(31, "test", "unit", "failed", false),
+            job(20, "build", "assemble", "success", false),
+        ]);
+    });
+    let gl = f.request(json!({"op":"github"}));
+    assert_eq!(gl["data"]["github"]["error"], Value::Null, "{gl}");
+    let o = &gl["data"]["github"]["overview"];
+    assert_eq!(o["errors"], json!([]), "{gl}");
+    assert_eq!(o["approvals"]["approved"], false);
+    assert_eq!(o["approvals"]["required"], 2);
+    assert_eq!(o["approvals"]["left"], 1);
+    assert_eq!(o["approvals"]["approved_by"], json!(["alice"]));
+    assert_eq!(o["approvals"]["missing"], json!(["bob", "carol"]));
+    assert_eq!(o["pipeline"]["id"], 7);
+    assert_eq!(o["pipeline"]["status"], "failed");
+    let stages: Vec<_> = o["pipeline"]["stages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| {
+            (
+                s["name"].as_str().unwrap(),
+                s["status"].as_str().unwrap(),
+                s["jobs"].as_array().unwrap().len(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        stages,
+        [
+            ("build", "success", 1),
+            ("test", "failed", 2),
+            ("deploy", "skipped", 1)
+        ]
+    );
+    assert_eq!(o["pipeline"]["stages"][1]["jobs"][0]["allow_failure"], true);
+    assert!(f.calls("api").iter().all(|c| c[4] == "GET"));
+}
+
+#[test]
+fn overview_failures_never_break_review_threads() {
+    let f = Fixture::new();
+    let gl = f.request(json!({"op":"github"}));
+    let view = &gl["data"]["github"];
+    assert_eq!(view["error"], Value::Null, "{gl}");
+    assert_eq!(view["threads"].as_array().unwrap().len(), 1);
+    let errors = view["overview"]["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{gl}");
+    assert!(
+        errors[0]
+            .as_str()
+            .unwrap()
+            .starts_with("Approvals unavailable")
+    );
+    assert!(
+        errors[1]
+            .as_str()
+            .unwrap()
+            .starts_with("Pipeline unavailable")
+    );
+    assert_eq!(view["overview"]["approvals"], Value::Null);
 }
