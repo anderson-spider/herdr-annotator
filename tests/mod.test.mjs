@@ -53,7 +53,7 @@ function harness() {
   }), timer: { every() {}, after(_ms, fn) {
     const timer = { cancelled: false, fire: () => { if (!timer.cancelled) fn(cx); }, cancel() { timer.cancelled = true; } };
     (state.timers ??= []).push(timer); return timer;
-  } }, spawn(fn) { jobs.push(Promise.resolve().then(() => fn(cx))); } };
+  } }, spawn(fn) { jobs.push(state.syncSpawn ? fn(cx) : Promise.resolve().then(() => fn(cx))); } };
   const storage = new Map();
   const context = {
     ...review, ...syntax, DraftLifecycle, GithubRefresh, UpdateController,
@@ -496,6 +496,17 @@ test("new-checkout rendering never creates retained note/editor state", async ()
   h.state.forbidNewInputs = true;
   assert.doesNotThrow(() => h.mod.render(h.cx));
   h.state.forbidNewInputs = false; await h.drain();
+  assert.ok(h.mod.reviewNotes.has(h.mod.context));
+});
+
+test("a refresh started from render defers note state even when spawn runs its body synchronously", async () => {
+  const h = harness(); h.mod.init({}, h.cx); await h.drain();
+  h.state.syncSpawn = true;
+  h.state.scope = { repo: "/another-checkout", machine: null };
+  h.state.forbidNewInputs = true;
+  h.mod.render(h.cx);
+  h.state.forbidNewInputs = false; await h.drain();
+  assert.equal(h.mod.snapshotError, null);
   assert.ok(h.mod.reviewNotes.has(h.mod.context));
 });
 

@@ -673,6 +673,7 @@ export default class Annotator extends View {
     this.busy = true;
     cx.spawn(async cx => {
       try {
+        await Promise.resolve();
         if (this.snapshotRequest !== token) return;
         this.ensureReviewNote(context);
         const data = await this.request(request);
