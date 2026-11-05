@@ -401,6 +401,14 @@ test("bindable commands cycle Last commit without sending and preserve unfinishe
   assert.equal(h.requests.filter(r => r.op === "send").length, 0);
 });
 
+test("the gitlab command selects the forge sub-tab and refreshes it", async () => {
+  const h = harness(); h.mod.init({}, h.cx); await h.drain();
+  assert.equal(h.mod.view, "diff");
+  h.mod.handleCommand("gitlab", h.cx); await h.drain();
+  assert.equal(h.mod.view, "github");
+  assert.ok(h.requests.some(r => r.op === "github"), "selecting the sub-tab loads the merge request");
+});
+
 test("Last commit remains selectable when the initial Branch comparison fails", async () => {
   const h = harness(); h.state.props = { presentation: "full" };
   h.state.reply = async request => request.op === "snapshot" && request.scope.comparison.mode === "branch"

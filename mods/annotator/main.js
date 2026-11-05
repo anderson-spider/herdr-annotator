@@ -509,6 +509,7 @@ export default class Annotator extends View {
       const modes = ["uncommitted", "last_commit", "branch"];
       this.changeComparison(modes[(modes.indexOf(this.mode) + 1) % modes.length], this.base, cx);
     } else if (command === "refresh") { this.refresh(cx, true); this.refreshGithub(cx, true); }
+    else if (command === "gitlab") { this.view = "github"; this.refreshGithub(cx); }
     else if (command === "full") this.openFull(cx);
     else if (command === "updates") { this.updates.save({ open: true }); this.updates.check(cx); }
     cx.notify();
