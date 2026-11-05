@@ -149,6 +149,7 @@ test("MR overview summarizes approvals, missing approvers, and pipeline stages",
   assert.equal(view.pipeline.headline, "Pipeline #7 · failed");
   assert.deepEqual(view.pipeline.stages.map(s => [s.name, s.mark, s.tone]), [["build", "✓", "ansi2"], ["test", "✗", "ansi1"]]);
   assert.deepEqual(view.pipeline.stages[1].jobs.map(j => [j.status, j.allowFailure]), [["failed", true], ["pending", false]]);
+  assert.deepEqual(view.pipeline.stages.map(s => [s.name, s.open, s.count]), [["build", false, 1], ["test", true, 2]]);
 });
 
 test("an approved MR hides missing approvers and absent sections stay null", () => {
@@ -159,4 +160,12 @@ test("an approved MR hides missing approvers and absent sections stay null", () 
   assert.deepEqual(view.errors, ["Pipeline unavailable: 403"]);
   assert.equal(overviewSummary(null), null);
   assert.equal(jobMark("success_with_warnings").mark, "✓");
+});
+
+test("only failed, running, pending, and manual stages list their jobs", () => {
+  const stage = status => ({ name: status, status, jobs: [{ name: "j", status, url: "", allow_failure: false }] });
+  const view = overviewSummary({ approvals: null, errors: [], pipeline: { id: 1, status: "running", url: "",
+    stages: ["success", "skipped", "canceled", "failed", "running", "pending", "manual"].map(stage) } });
+  assert.deepEqual(view.pipeline.stages.map(s => [s.name, s.open]), [["success", false], ["skipped", false], ["canceled", false],
+    ["failed", true], ["running", true], ["pending", true], ["manual", true]]);
 });

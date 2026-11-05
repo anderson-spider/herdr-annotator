@@ -961,8 +961,9 @@ export default class Annotator extends View {
     if (o.pipeline) {
       card.child(div().mt(o.approvals ? 4 : 0).font_semibold().text_size(11.5).text_color(t[o.pipeline.tone]).child(o.pipeline.headline));
       for (const stage of o.pipeline.stages) {
-        card.child(h_flex().gap(5).child(div().text_color(t[stage.tone]).child(stage.mark)).child(div().font_semibold().text_size(11.5).text_color(t.foreground).child(stage.name)));
-        for (const job of stage.jobs) card.child(h_flex().pl(14).gap(5)
+        card.child(h_flex().gap(5).child(div().text_color(t[stage.tone]).child(stage.mark)).child(div().font_semibold().text_size(11.5).text_color(t.foreground).child(stage.name))
+          .when(!stage.open, el => el.child(div().text_size(11).text_color(t.muted).child(`${stage.count} ${stage.count === 1 ? "job" : "jobs"}`))));
+        if (stage.open) for (const job of stage.jobs) card.child(h_flex().pl(14).gap(5)
           .child(div().text_size(11.5).text_color(t[job.tone]).child(job.mark))
           .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(job.status === "failed" && !job.allowFailure ? t.ansi1 : t.muted)
             .child(job.allowFailure && job.status === "failed" ? `${job.name} (allowed to fail)` : job.name)));

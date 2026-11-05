@@ -353,6 +353,9 @@ export function overviewSummary(overview) {
   const pipeline = p && {
     headline: `Pipeline #${p.id} · ${p.status.replaceAll("_", " ")}`, tone: jobMark(p.status).tone, url: p.url,
     stages: p.stages.map(stage => ({ name: stage.name, ...jobMark(stage.status),
+      // Only stages that need attention list their jobs; finished ones collapse to a count.
+      open: ["failed", "running", "pending", "manual"].includes(jobMark(stage.status).status),
+      count: stage.jobs.length,
       jobs: stage.jobs.map(job => ({ name: job.name, url: job.url, allowFailure: job.allow_failure, ...jobMark(job.status) })) })),
   };
   return { approvals, pipeline, errors: overview.errors ?? [] };
