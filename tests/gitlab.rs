@@ -486,6 +486,7 @@ fn self_hosted_hosts_require_an_explicit_allowlist() {
     let gl = f.request(json!({"op":"github","force":true}));
     let error = gl["data"]["github"]["error"].as_str().unwrap();
     assert!(error.contains("HERDR_ANNOTATOR_GITLAB_HOSTS"), "{error}");
+    assert_eq!(gl["data"]["github"]["provider"], Value::Null);
     assert!(f.calls("api").is_empty());
     let gl = f.request_with(json!({"op":"github","force":true}), "git.example.com");
     assert_eq!(gl["data"]["github"]["error"], Value::Null, "{gl}");
@@ -587,4 +588,16 @@ fn read_markers_are_local_and_new_notes_become_unread() {
         f.request(json!({"op":"github"}))["data"]["github"]["threads"][0]["read"],
         false
     );
+}
+
+#[test]
+fn vanished_threads_are_reported_in_merge_request_terms() {
+    let f = Fixture::new();
+    let refs = f.refs();
+    f.update(|d| d["discussions"] = json!([]));
+    let reply =
+        f.request(json!({"op":"github_reply","thread":refs[0],"body":"Thanks","reply_id":"gone"}));
+    let error = reply["error"].as_str().unwrap();
+    assert!(error.contains("this MR"), "{error}");
+    assert_eq!(f.posts(), 0);
 }

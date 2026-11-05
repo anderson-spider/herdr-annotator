@@ -633,9 +633,20 @@ for (const full of [false, true]) test(`${full ? "full review" : "sidebar"} labe
   assert.ok(h.nodes.some(n => n.children.some(c => typeof c === "string" && c.startsWith("No open MR found"))));
 });
 
+for (const full of [false, true]) test(`${full ? "full review" : "sidebar"} uses neutral thread labels until the forge is known`, async () => {
+  const h = harness(); h.state.props = full ? { presentation: "full" } : {};
+  h.mod.init({}, h.cx); await h.drain();
+  for (const github of [null, { provider: null, error: "No supported github.com or GitLab origin/upstream remote.", threads: [] }]) {
+    h.mod.github = github; h.mod.view = "github"; h.mod.render(h.cx);
+    const text = h.nodes.flatMap(n => n.children).filter(c => typeof c === "string");
+    assert.ok(text.includes("Threads · 0"), "neutral tab label");
+    assert.ok(!text.some(c => /GitHub|GitLab/.test(c) && !c.startsWith("No supported")), text.join(" | "));
+  }
+});
+
 test("missing GitHub CLI guidance does not disable local comment saving or sending", async () => {
   const h = harness(); h.mod.init({}, h.cx); await h.drain();
-  h.mod.github = { error: "GitHub CLI (gh) was not found. Install it from https://cli.github.com, then run gh auth login. Local reviews still work.", threads: [] };
+  h.mod.github = { provider: "github", error: "GitHub CLI (gh) was not found. Install it from https://cli.github.com, then run gh auth login. Local reviews still work.", threads: [] };
   h.mod.view = "github"; h.mod.render(h.cx);
   assert.ok(h.nodes.some(n => n.children.includes("GitHub unavailable · local reviews still work")));
   assert.ok(h.nodes.filter(n => n.id === "send-review").at(-1).events.on_click);
