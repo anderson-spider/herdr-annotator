@@ -31,7 +31,12 @@ def digest(path):
 if updater.exists() and (not installed.get("updater_digest") or digest(updater) != installed["updater_digest"]):
     parser.error(f"Installed updater changed locally or has no receipt: {updater}")
 version = json.loads((root / "mods/annotator/mod.json").read_text())["version"]
-tools = {name: str(Path(path).resolve()) for name in ("opencode", "pi", "node", "hc", "gh", "glab")
+def tool_path(path):
+    # A version-manager shim (mise, asdf) is a symlink to the manager itself, which cannot
+    # run as the tool. Keep the shim's own path whenever resolving changes the executable name.
+    resolved = Path(path).resolve()
+    return str(resolved if resolved.name == Path(path).name else Path(path).absolute())
+tools = {name: tool_path(path) for name in ("opencode", "pi", "node", "hc", "gh", "glab")
          if (path := shutil.which(name))}
 commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
 def check_release_source():

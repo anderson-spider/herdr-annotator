@@ -74,6 +74,24 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(layouts, {path: path.read_bytes() for path in layouts})
         self.assertTrue(list((self.home / ".local/share/herdr-annotator/backups").glob("*/install.json")))
 
+    def test_tool_shims_keep_their_path_but_same_name_symlinks_are_resolved(self):
+        bin_dir = Path(self.temp.name) / "bin"
+        manager = Path(self.temp.name) / "manager" / "mise"
+        manager.parent.mkdir()
+        manager.write_text("#!/bin/sh\nexit 0\n")
+        manager.chmod(0o700)
+        (bin_dir / "node").symlink_to(manager)  # a shim: resolves to a differently named binary
+        versioned = Path(self.temp.name) / "Cellar" / "1.0" / "glab"
+        versioned.parent.mkdir(parents=True)
+        versioned.write_text("#!/bin/sh\nexit 0\n")
+        versioned.chmod(0o700)
+        (bin_dir / "glab").symlink_to(versioned)  # same name: the stable versioned path is recorded
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tools = self.receipt()["tools"]
+        self.assertEqual(tools["node"], str(bin_dir / "node"))
+        self.assertEqual(tools["glab"], str(versioned.resolve()))
+
     def test_modified_helper_and_updater_are_refused_before_replacing_mods(self):
         first = self.install()
         self.assertEqual(first.returncode, 0, first.stderr)
