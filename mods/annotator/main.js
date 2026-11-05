@@ -119,8 +119,18 @@ export default class Annotator extends View {
   get busy() { return Boolean(this._busy || this.updates?.running); }
   set busy(value) { this._busy = value; this.publishUpdateState(); }
 
+  // A reload (for example install.py replacing the mod) releases this view's native text state before
+  // its last render. Nothing is left to protect then, so stop touching the state instead of failing the render.
+  stateReleased() {
+    try { this.editor?.value(); for (const note of this.reviewNotes.values()) note.editor.value(); return false; }
+    catch (error) {
+      if (!String(error).includes("has been released")) throw error;
+      this.closed = true; return true;
+    }
+  }
+
   publishUpdateState() {
-    if (!this.updates) return;
+    if (!this.updates || this.stateReleased()) return;
     if (this.closed) { if (!this._busy && !this.ordering) this.updates.close(); return; }
     const savedDraft = [...(this.draft?.saved.entries() ?? [])].some(([key, draft]) => key !== this.context && draft.body?.trim())
       || [...this.navigationDrafts.values()].some(draft => draft.body?.trim());
@@ -1151,6 +1161,7 @@ export default class Annotator extends View {
   }
 
   render(cx) {
+    if (this.stateReleased()) return div();
     this.publishUpdateState();
     if (this.updates?.running) return this.updateScreen();
     this.syncSidebar();

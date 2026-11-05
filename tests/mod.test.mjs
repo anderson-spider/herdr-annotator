@@ -423,6 +423,16 @@ test("GitLab view keeps approvals on top and moves the pipeline into a Jobs sub-
   assert.ok(texts().includes("Merge request discussion"));
 });
 
+test("rendering after a reload released the note editors does not fail publishing update state", async () => {
+  const h = harness(); h.mod.init({}, h.cx); await h.drain();
+  const released = () => { throw new Error("this textarea state has been released"); };
+  for (const note of h.mod.reviewNotes.values()) note.editor.value = released;
+  assert.doesNotThrow(() => h.mod.publishUpdateState());
+  assert.doesNotThrow(() => h.mod.render(h.cx));
+  h.mod.editor.value = () => { throw new Error("unrelated failure"); };
+  assert.throws(() => h.mod.publishUpdateState(), /unrelated failure/);
+});
+
 test("the gitlab command selects the forge sub-tab and refreshes it", async () => {
   const h = harness(); h.mod.init({}, h.cx); await h.drain();
   assert.equal(h.mod.view, "diff");
