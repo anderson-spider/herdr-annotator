@@ -140,8 +140,8 @@ Remote machines need no extra installation.
 To use it in the existing Changes panel, clone a layout and install into that copy:
 
 ```sh
-herdr-app do layout.clone '{"name":"main","as":"my-review"}'
-python3 scripts/install.py --layout my-review
+herdr-app do layout.clone '{"name":"main","as":"spider"}'
+python3 scripts/install.py --layout spider
 ```
 
 For an existing personal layout, use its name instead. The installer backs up
@@ -184,7 +184,7 @@ Existing installs need one manual reinstall to gain this mechanism:
 
 ```sh
 git pull --ff-only
-python3 scripts/install.py --layout my-review
+python3 scripts/install.py --layout spider
 ```
 
 Use your own layout name, or omit `--layout` for a standalone install. Update
