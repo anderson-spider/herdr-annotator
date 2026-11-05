@@ -401,6 +401,28 @@ test("bindable commands cycle Last commit without sending and preserve unfinishe
   assert.equal(h.requests.filter(r => r.op === "send").length, 0);
 });
 
+test("GitLab view keeps approvals on top and moves the pipeline into a Jobs sub-tab", async () => {
+  const h = harness(); h.mod.init({}, h.cx); await h.drain();
+  const thread = { id: "d1", fingerprint: "v1", path: "", line: null, side: "", comments: [{ author: "reviewer", body: "Explain the rollout" }] };
+  const job = (name, status) => ({ name, status, url: null, allow_failure: false });
+  h.mod.github = { provider: "gitlab", threads: [thread], overview: {
+    approvals: { approved: true, required: 0, left: 0, approved_by: ["ana"], missing: [] },
+    pipeline: { id: 9, status: "failed", url: null, stages: [{ name: "build", status: "success", jobs: [job("assemble", "success")] }, { name: "merge", status: "failed", jobs: [job("check-ready", "failed")] }] },
+    errors: [] } };
+  h.mod.view = "github";
+  const texts = () => { h.nodes.length = 0; h.mod.render(h.cx); return h.nodes.flatMap(n => n.children).filter(c => typeof c === "string"); };
+  let text = texts();
+  assert.ok(text.some(t => t.startsWith("✓ ana")), "approvals stay visible above the sub-tabs");
+  assert.ok(text.includes("Merge request discussion") && !text.includes("check-ready"), "Comments sub-tab lists threads, not jobs");
+  h.nodes.filter(n => n.id === "forge-jobs").at(-1).events.on_click(null, h.cx);
+  text = texts();
+  assert.ok(text.includes("check-ready") && text.includes("Pipeline #9 · failed"), "Jobs sub-tab lists the failing job");
+  assert.ok(!text.includes("assemble") && text.includes("1 job"), "finished stages stay collapsed");
+  assert.ok(!text.includes("Merge request discussion"), "threads are hidden while Jobs is selected");
+  h.nodes.filter(n => n.id === "forge-threads").at(-1).events.on_click(null, h.cx);
+  assert.ok(texts().includes("Merge request discussion"));
+});
+
 test("the gitlab command selects the forge sub-tab and refreshes it", async () => {
   const h = harness(); h.mod.init({}, h.cx); await h.drain();
   assert.equal(h.mod.view, "diff");

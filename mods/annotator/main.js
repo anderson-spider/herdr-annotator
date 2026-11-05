@@ -50,7 +50,7 @@ export default class Annotator extends View {
     this.githubRefresh = new GithubRefresh(); this.bases = [];
     const sizes = shared("annotator.sections");
     this.sizes = Array.isArray(sizes) && sizes.length === 3 && sizes.every(n => Number.isFinite(n) && n > 0) ? sizes : [140, 360, 175];
-    this.view = ["comments", "github"].includes(props()?.view) ? props().view : "diff"; this.filesOpen = this.full ? preferences.filesOpen : true;
+    this.forgeSub = "threads"; this.view = ["comments", "github"].includes(props()?.view) ? props().view : "diff"; this.filesOpen = this.full ? preferences.filesOpen : true;
     this.editor = TextareaState.new({ placeholder: "What should change? Ask a question or leave feedback…", rows: 3 });
     this.draft = new DraftLifecycle(this.editor);
     this.editor.on("change", (_e, cx) => { this.publishUpdateState(); cx.notify(); });
@@ -950,29 +950,29 @@ export default class Annotator extends View {
     cx.notify();
   }
 
-  overviewCard(t) {
-    const o = overviewSummary(this.github?.overview);
-    if (!o || (!o.approvals && !o.pipeline && !o.errors.length)) return null;
+  // Approvals stay in one compact block above the sub-tabs; the pipeline has its own Jobs sub-tab.
+  approvalsBlock(o, t) {
+    if (!o?.approvals) return null;
     const row = (text, color) => div().text_size(11.5).text_color(color).truncate().child(text);
-    const card = v_flex().id("review-mr-overview").mx(8).mb(6).p(9).gap(5).rounded(8).bg(t.surface).border_1().border_color(t.border);
-    if (o.approvals) {
-      card.child(div().font_semibold().text_size(11.5).text_color(t[o.approvals.tone]).child(o.approvals.headline));
-      if (o.approvals.approvedBy.length) card.child(row(`✓ ${o.approvals.approvedBy.join(", ")}`, t.ansi2));
-      if (o.approvals.missing.length) card.child(row(`○ waiting on ${o.approvals.missing.join(", ")}`, t.muted));
+    const block = v_flex().id("review-approvals").mx(8).mb(6).p(9).gap(3).rounded(8).bg(t.surface).border_1().border_color(t.border)
+      .child(div().font_semibold().text_size(11.5).text_color(t[o.approvals.tone]).child(o.approvals.headline));
+    if (o.approvals.approvedBy.length) block.child(row(`✓ ${o.approvals.approvedBy.join(", ")}`, t.ansi2));
+    if (o.approvals.missing.length) block.child(row(`○ waiting on ${o.approvals.missing.join(", ")}`, t.muted));
+    return block;
+  }
+
+  jobsView(o, t) {
+    const view = v_flex().id("review-jobs").mx(8).mb(6).p(9).gap(5).rounded(8).bg(t.surface).border_1().border_color(t.border)
+      .child(div().font_semibold().text_size(11.5).text_color(t[o.pipeline.tone]).child(o.pipeline.headline));
+    for (const stage of o.pipeline.stages) {
+      view.child(h_flex().gap(5).child(div().text_color(t[stage.tone]).child(stage.mark)).child(div().font_semibold().text_size(11.5).text_color(t.foreground).child(stage.name))
+        .when(!stage.open, el => el.child(div().text_size(11).text_color(t.muted).child(`${stage.count} ${stage.count === 1 ? "job" : "jobs"}`))));
+      if (stage.open) for (const job of stage.jobs) view.child(h_flex().pl(14).gap(5)
+        .child(div().text_size(11.5).text_color(t[job.tone]).child(job.mark))
+        .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(job.status === "failed" && !job.allowFailure ? t.ansi1 : t.muted)
+          .child(job.allowFailure && job.status === "failed" ? `${job.name} (allowed to fail)` : job.name)));
     }
-    if (o.pipeline) {
-      card.child(div().mt(o.approvals ? 4 : 0).font_semibold().text_size(11.5).text_color(t[o.pipeline.tone]).child(o.pipeline.headline));
-      for (const stage of o.pipeline.stages) {
-        card.child(h_flex().gap(5).child(div().text_color(t[stage.tone]).child(stage.mark)).child(div().font_semibold().text_size(11.5).text_color(t.foreground).child(stage.name))
-          .when(!stage.open, el => el.child(div().text_size(11).text_color(t.muted).child(`${stage.count} ${stage.count === 1 ? "job" : "jobs"}`))));
-        if (stage.open) for (const job of stage.jobs) card.child(h_flex().pl(14).gap(5)
-          .child(div().text_size(11.5).text_color(t[job.tone]).child(job.mark))
-          .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(job.status === "failed" && !job.allowFailure ? t.ansi1 : t.muted)
-            .child(job.allowFailure && job.status === "failed" ? `${job.name} (allowed to fail)` : job.name)));
-      }
-    }
-    for (const error of o.errors) card.child(row(error, t.ansi3));
-    return card;
+    return view;
   }
 
   githubCard(thread, t) {
@@ -1263,12 +1263,16 @@ export default class Annotator extends View {
         .when(!listedComments.length, el => el.child(v_flex().p(18).gap(8)
           .child(div().font_semibold().child(allComments.length ? "No comments match these filters" : "Your review starts with a comment"))
           .child(div().text_size(12).text_color(t.muted).child(allComments.length ? "Show sent/resolved or turn off Unread only to see saved notes." : "Choose a file in Code, select a line, and write what should change. Save several comments, then send them together."))))))
-      .when(this.view === "github", el => el.child(v_flex().id("review-github").flex_1().min_h(0).overflow_y_scrollbar()
+      .when(this.view === "github", el => { const overview = overviewSummary(this.github?.overview), showJobs = this.forgeSub === "jobs" && Boolean(overview?.pipeline); return el.child(v_flex().id("review-github").flex_1().min_h(0).overflow_y_scrollbar()
         .child(div().p(10).text_size(11).text_color(t.muted).child(this.githubBusy ? `Checking ${this.forge ?? "review threads"}…` : this.github?.error ? `${this.forge ?? "Review threads"} unavailable · local reviews still work` : this.github?.pull_request ? `${this.github.pull_request.url} · polls every 5 minutes` : `No open ${this.changeRequest} found for this branch. Refresh checks ${this.forgeHost} now.`))
         .when(Boolean(this.github?.error), el => el.child(div().p(10).text_color(t.ansi3).child(this.github.error)))
         .when(Boolean(this.github?.limited), el => el.child(div().p(10).text_color(t.ansi3).child(`${this.forge ?? "Review"} thread limit reached; more threads exist on the ${this.changeRequest}.`)))
-        .when(Boolean(this.github?.overview), el => el.child(this.overviewCard(t) ?? div()))
-        .children(unreadItems(threads, this.onlyUnread).map(thread => this.githubCard(thread, t)))))))
+        .child(this.approvalsBlock(overview, t) ?? div())
+        .when(Boolean(overview?.pipeline), el => el.child(h_flex().h(30).flex_none().px(6).gap(4)
+          .child(this.button("forge-threads", `Comments · ${threads.length}`, cx => { this.forgeSub = "threads"; cx.notify(); }, true, showJobs ? "quiet" : "secondary"))
+          .child(this.button("forge-jobs", `Jobs ${overview.pipeline.stages.find(st => st.status === "failed")?.mark ?? overview.pipeline.stages.at(-1)?.mark ?? ""}`.trim(), cx => { this.forgeSub = "jobs"; cx.notify(); }, true, showJobs ? "secondary" : "quiet"))))
+        .when(showJobs, el => el.child(this.jobsView(overview, t)))
+        .when(!showJobs, el => el.children(unreadItems(threads, this.onlyUnread).map(thread => this.githubCard(thread, t))))) })))
         .child(resizable_panel().size(this.sizes[2]).size_range(110).visible(!this.editDraft && !this.questionDraft).child(v_flex().size_full().min_h(0).overflow_y_scrollbar().child(v_flex().mx(8).mt(6).mb(8).p(9).gap(6).rounded(8).bg(t.surface).border_1().border_color(selection ? t.accent : t.border)
         .child(h_flex().items_center().gap(5)
           .child(div().flex_1().min_w(0).truncate().font_semibold().text_size(11.5).text_color(selection ? t.accent : t.foreground)
