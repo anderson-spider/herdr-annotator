@@ -3,7 +3,7 @@
 A native code-review mod for **[Herdr App](https://herdr.dev)**. Review a branch,
 the last commit, or uncommitted work. Leave comments beside the code and send
 them to the agent working in that checkout. Read and reply to GitHub PR threads
-in the same workspace. Local and SSH worktrees supported.
+and GitLab merge request discussions in the same workspace. Local and SSH worktrees supported.
 
 ![Full review with split diff and inline feedback](preview.png)
 
@@ -104,6 +104,12 @@ signed-in `gh` account. Sending to the agent does not resolve threads on GitHub.
 
 ![GitHub review threads and explicit reply composer](docs/images/github-replies.png)
 
+With a GitLab remote the tab becomes **GitLab** and does the same for merge
+request discussions through your signed-in `glab` account, including resolvable
+general MR discussions. Only `gitlab.com` is trusted by default; allow a
+self-hosted instance with `python3 scripts/install.py --gitlab-host gitlab.example.com`
+or `HERDR_ANNOTATOR_GITLAB_HOSTS`.
+
 Read/unread markers and sent/resolved filters help you find remaining feedback.
 Export a review as text when you want to copy it elsewhere.
 
@@ -114,7 +120,8 @@ post replies.
 
 Requires macOS or Linux, Herdr App, herdr-core (`hc`), Git, Rust, and Python 3.
 GitHub threads also need an authenticated GitHub CLI (`gh`) on the app machine.
-Without `gh`, local reviews still work; the GitHub tab shows setup instructions.
+GitLab discussions need an authenticated GitLab CLI (`glab`) instead.
+Without them, local reviews still work; the tab shows setup instructions.
 
 ```sh
 git clone https://github.com/jakub-tucek/herdr-annotator.git
@@ -140,9 +147,10 @@ the same `--layout` to update both integrations.
 
 ## Data and delivery
 
-Comments stay on your app machine. Git and GitHub review reads do not modify the
-repository. Only **Post to GitHub** posts a reply, as your signed-in `gh` account.
-An unconfirmed post keeps its draft; check GitHub before explicitly retrying.
+Comments stay on your app machine. Git, GitHub and GitLab review reads do not modify the
+repository. Only **Post to GitHub** / **Post to GitLab** posts a reply, as your signed-in
+`gh` / `glab` account. An unconfirmed post keeps its draft; check the thread
+before explicitly retrying.
 **Send review submits with Enter**; check the chat
 before retrying uncertain delivery. Diff preview limits still apply.
 

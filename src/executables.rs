@@ -15,15 +15,26 @@ fn executable(path: &Path) -> bool {
             .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
-fn installed() -> BTreeMap<String, PathBuf> {
+fn receipt(key: &str) -> Option<Value> {
     env::var_os("HOME")
         .and_then(|home| {
             std::fs::read(PathBuf::from(home).join(".local/share/herdr-annotator/install.json"))
                 .ok()
         })
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-        .and_then(|value| value.get("tools").cloned())
+        .and_then(|value| value.get(key).cloned())
+}
+
+fn installed() -> BTreeMap<String, PathBuf> {
+    receipt("tools")
         .and_then(|tools| serde_json::from_value(tools).ok())
+        .unwrap_or_default()
+}
+
+/// Self-hosted GitLab hosts recorded by `install.py --gitlab-host`.
+pub(crate) fn gitlab_hosts() -> Vec<String> {
+    receipt("gitlab_hosts")
+        .and_then(|hosts| serde_json::from_value(hosts).ok())
         .unwrap_or_default()
 }
 

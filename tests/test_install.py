@@ -58,10 +58,11 @@ class InstallerTest(unittest.TestCase):
         return json.loads((self.home / ".local/share/herdr-annotator/install.json").read_text())
 
     def test_install_remembers_all_layouts_and_updates_private_tabs_without_rewriting_layouts(self):
-        first = self.install("--layout", "one", "--layout", "two")
+        first = self.install("--layout", "one", "--layout", "two", "--gitlab-host", "Git.Example.com")
         self.assertEqual(first.returncode, 0, first.stderr)
         receipt = self.receipt()
         self.assertEqual(receipt["layouts"], ["one", "two"])
+        self.assertEqual(receipt["gitlab_hosts"], ["git.example.com"])
         self.assertEqual(receipt["version"], "0.2.0")
         self.assertTrue(receipt["binary_digest"])
         self.assertTrue(receipt["updater_digest"])
@@ -69,6 +70,7 @@ class InstallerTest(unittest.TestCase):
         second = self.install()
         self.assertEqual(second.returncode, 0, second.stderr)
         self.assertEqual(self.receipt()["layouts"], ["one", "two"])
+        self.assertEqual(self.receipt()["gitlab_hosts"], ["git.example.com"])
         self.assertEqual(layouts, {path: path.read_bytes() for path in layouts})
         self.assertTrue(list((self.home / ".local/share/herdr-annotator/backups").glob("*/install.json")))
 

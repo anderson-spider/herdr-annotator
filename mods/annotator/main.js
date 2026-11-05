@@ -281,6 +281,8 @@ export default class Annotator extends View {
   get drafts() { return this.draft.saved; }
   get github() { return this.githubRefresh.value; }
   set github(value) { this.githubRefresh.value = value; }
+  get forge() { return this.github?.provider === "gitlab" ? "GitLab" : "GitHub"; }
+  get changeRequest() { return this.github?.provider === "gitlab" ? "MR" : "PR"; }
   get githubBusy() { return this.githubRefresh.busy; }
   get githubContext() { return this.githubRefresh.context; }
   get threadQueue() { return this.githubRefresh.queue; }
@@ -906,7 +908,7 @@ export default class Annotator extends View {
     const key = JSON.stringify([this.context, thread.id]);
     let draft = this.githubDrafts.get(key);
     if (!draft) {
-      const editor = TextareaState.new({ placeholder: "Reply to this GitHub thread…", rows: 3 });
+      const editor = TextareaState.new({ placeholder: `Reply to this ${this.forge} thread…`, rows: 3 });
       editor.on("change", (_event, cx) => { this.publishUpdateState(); cx.notify(); });
       draft = { editor, id: this.githubReplyId(), status: null, error: null };
       this.githubDrafts.set(key, draft);
@@ -934,7 +936,7 @@ export default class Annotator extends View {
         }
         if (contextKey() === context) {
           this.githubRefresh.replace(data.github, context);
-          if (data.reply.status === "confirmed") this.notice = "Reply posted to GitHub.";
+          if (data.reply.status === "confirmed") this.notice = `Reply posted to ${this.forge}.`;
         }
       } catch (e) {
         draft.status = "uncertain"; draft.error = String(e);
@@ -949,13 +951,13 @@ export default class Annotator extends View {
     const key = JSON.stringify([this.context, thread.id]), draft = this.githubDrafts.get(key);
     return v_flex().id(`thread-${thread.id}`).m(8).p(10).gap(7).rounded(8).bg(t.surface).border_1().border_color(t.border)
       .child(div().text_size(10.5).text_color(thread.read ? t.dim : t.accent).child(thread.read ? "Read" : "● Unread"))
-      .child(div().font_semibold().text_size(12).child(`${thread.path}:${thread.start_line ?? thread.line ?? "?"}${thread.start_line ? `–${thread.line}` : ""} · ${thread.side}`))
+      .child(div().font_semibold().text_size(12).child(thread.path ? `${thread.path}:${thread.start_line ?? thread.line ?? "?"}${thread.start_line ? `–${thread.line}` : ""} · ${thread.side}` : "Merge request discussion"))
       .child(div().text_size(11).text_color(t.muted).child(thread.resolved ? "Resolved" : thread.delivery ? `Delivery: ${thread.delivery}` : thread.incomplete ? "Incomplete thread · cannot send" : `${thread.outdated ? "Outdated location · " : ""}${thread.has_updates ? "New replies · " : ""}Open`))
       .children(thread.comments.map((c, index) => v_flex().gap(3)
         .child(div().text_size(11).text_color(t.accent).child(`@${c.author}`))
         .child(this.selectableText(`thread-body-${thread.id}-${index}`, c.body).text_size(12))))
       .child(h_flex().gap(5).flex_wrap()
-        .child(this.button(`copy-thread-${thread.id}`, "Copy thread", cx => this.copyText(`${thread.path}:${thread.line ?? "?"}\n\n${thread.comments.map(comment => `@${comment.author}\n${comment.body}`).join("\n\n")}`, cx)))
+        .child(this.button(`copy-thread-${thread.id}`, "Copy thread", cx => this.copyText(`${thread.path ? `${thread.path}:${thread.line ?? "?"}` : "Merge request discussion"}\n\n${thread.comments.map(comment => `@${comment.author}\n${comment.body}`).join("\n\n")}`, cx)))
         .child(this.button(`reply-thread-${thread.id}`, "Reply", cx => this.beginGithubReply(thread, cx), !thread.incomplete && !this.github?.error))
         .child(this.button(`read-thread-${thread.id}`, thread.read ? "Mark unread" : "Mark read", cx => this.markGithubRead(thread, cx)))
         .child(this.button(`queue-${thread.id}`, queued ? "Remove from review" : "Add to review", cx => {
@@ -965,15 +967,15 @@ export default class Annotator extends View {
         }, enabled, "secondary"))
         .child(this.button(`fix-${thread.id}`, "Fix thread", cx => this.sendToSession(cx, thread), enabled && !this.editor.value().trim() && reviewTargetReady(this.currentSession()), "primary")))
       .when(Boolean(draft), el => el.child(v_flex().gap(7)
-        .child(div().text_size(11).text_color(t.muted).child("Posts as your signed-in GitHub account. Does not send to the agent."))
+        .child(div().text_size(11).text_color(t.muted).child(`Posts as your signed-in ${this.forge} account. Does not send to the agent.`))
         .child(div().p(8).rounded(6).bg(t.background).border_1().border_color(t.border)
           .child(Textarea.new(draft.editor).h(85).w_full().text_size(13)))
         .when(Boolean(draft.error), el => el.child(div().text_size(12).text_color(t.ansi3).child(draft.error)))
-        .when(draft.status === "uncertain", el => el.child(div().text_size(11).text_color(t.ansi3).child("Posting is not confirmed. Check the thread on GitHub before posting again; a retry could duplicate your reply.")))
+        .when(draft.status === "uncertain", el => el.child(div().text_size(11).text_color(t.ansi3).child(`Posting is not confirmed. Check the thread on ${this.forge} before posting again; a retry could duplicate your reply.`)))
         .child(h_flex().gap(5).flex_wrap()
           .child(this.button(`cancel-reply-${thread.id}`, "Cancel", cx => { this.githubDrafts.delete(key); cx.notify(); }))
-          .child(this.button(`post-reply-${thread.id}`, "Post to GitHub", cx => this.postGithubReply(thread, cx), Boolean(draft.editor.value().trim()) && draft.status !== "uncertain" && !this.github?.error, "primary"))
-          .when(draft.status === "uncertain", el => el.child(this.button(`retry-reply-${thread.id}`, "I checked GitHub · Post again", cx => this.postGithubReply(thread, cx, true), Boolean(draft.editor.value().trim()) && !this.github?.error))))));
+          .child(this.button(`post-reply-${thread.id}`, `Post to ${this.forge}`, cx => this.postGithubReply(thread, cx), Boolean(draft.editor.value().trim()) && draft.status !== "uncertain" && !this.github?.error, "primary"))
+          .when(draft.status === "uncertain", el => el.child(this.button(`retry-reply-${thread.id}`, `I checked ${this.forge} · Post again`, cx => this.postGithubReply(thread, cx, true), Boolean(draft.editor.value().trim()) && !this.github?.error))))));
   }
 
   button(id, text, action, enabled = true, variant = "quiet") {
@@ -1166,14 +1168,14 @@ export default class Annotator extends View {
           .child(this.selectableText("review-branch-name", `${data?.snapshot.scope.machine ? data.snapshot.scope.machine + " · " : ""}${data?.snapshot.branch ?? ""}`).flex_1().min_w(0).truncate().text_size(11).text_color(t.dim))
           .child(this.button("open-full-review", "↗", cx => this.openFull(cx), Boolean(data)).tooltip("Open full review tab"))
           .child(this.button("review-updates", "↑", cx => { this.updates.save({ open: !this.updates.state.open }); this.updates.check(cx); cx.notify(); }).tooltip("Annotator updates"))
-          .child(this.button("review-refresh", this.busy ? "…" : "↻", cx => { this.refresh(cx, true); this.refreshGithub(cx, true); }).tooltip("Refresh diff and GitHub"))))
+          .child(this.button("review-refresh", this.busy ? "…" : "↻", cx => { this.refresh(cx, true); this.refreshGithub(cx, true); }).tooltip(`Refresh diff and ${this.forge}`))))
       .child(this.updatePanel())
       .when(Boolean(this.error), el => el.child(this.errorCard(t)))
       .when(Boolean(this.notice), el => el.child(div().mx(8).my(4).p(8).rounded(6).bg(t.raised).text_size(11.5).text_color(t.muted).child(this.notice)))
       .child(h_flex().h(33).flex_none().px(6).gap(4).bg(t.chrome).border_b(1).border_color(t.border)
         .child(this.button("view-diff", "Code", cx => { this.view = "diff"; cx.notify(); }, true, this.view === "diff" ? "secondary" : "quiet"))
          .child(this.button("view-comments", `Comments · ${summary.total}`, cx => { this.view = "comments"; cx.notify(); }, true, this.view === "comments" ? "secondary" : "quiet"))
-          .child(this.button("view-github", `GitHub · ${threads.length}`, cx => { this.view = "github"; this.refreshGithub(cx); cx.notify(); }, true, this.view === "github" ? "secondary" : "quiet"))
+          .child(this.button("view-github", `${this.forge} · ${threads.length}`, cx => { this.view = "github"; this.refreshGithub(cx); cx.notify(); }, true, this.view === "github" ? "secondary" : "quiet"))
          .when(summary.outdated > 0, el => el.child(this.badge(`${summary.outdated} outdated`, t.ansi3, t.ansi3 + "18"))))
        .when(this.resolvedCount() > 0 || this.showResolved, el => el.child(h_flex().px(6).flex_none().bg(t.chrome).child(this.resolvedFilter("filter-resolved"))))
         .when(this.view === "diff", el => el.child(h_flex().px(5).gap(3).flex_none().bg(t.chrome)
@@ -1232,9 +1234,9 @@ export default class Annotator extends View {
           .child(div().font_semibold().child(allComments.length ? "No comments match these filters" : "Your review starts with a comment"))
           .child(div().text_size(12).text_color(t.muted).child(allComments.length ? "Show sent/resolved or turn off Unread only to see saved notes." : "Choose a file in Code, select a line, and write what should change. Save several comments, then send them together."))))))
       .when(this.view === "github", el => el.child(v_flex().id("review-github").flex_1().min_h(0).overflow_y_scrollbar()
-        .child(div().p(10).text_size(11).text_color(t.muted).child(this.githubBusy ? "Checking GitHub…" : this.github?.error ? "GitHub unavailable · local reviews still work" : this.github?.pull_request ? `${this.github.pull_request.url} · polls every 5 minutes` : "No open PR found for this branch. Refresh checks GitHub now."))
+        .child(div().p(10).text_size(11).text_color(t.muted).child(this.githubBusy ? `Checking ${this.forge}…` : this.github?.error ? `${this.forge} unavailable · local reviews still work` : this.github?.pull_request ? `${this.github.pull_request.url} · polls every 5 minutes` : `No open ${this.changeRequest} found for this branch. Refresh checks ${this.forge} now.`))
         .when(Boolean(this.github?.error), el => el.child(div().p(10).text_color(t.ansi3).child(this.github.error)))
-        .when(Boolean(this.github?.limited), el => el.child(div().p(10).text_color(t.ansi3).child("GitHub thread limit reached; more threads exist on the PR.")))
+        .when(Boolean(this.github?.limited), el => el.child(div().p(10).text_color(t.ansi3).child(`${this.forge} thread limit reached; more threads exist on the ${this.changeRequest}.`)))
         .children(unreadItems(threads, this.onlyUnread).map(thread => this.githubCard(thread, t)))))))
         .child(resizable_panel().size(this.sizes[2]).size_range(110).visible(!this.editDraft && !this.questionDraft).child(v_flex().size_full().min_h(0).overflow_y_scrollbar().child(v_flex().mx(8).mt(6).mb(8).p(9).gap(6).rounded(8).bg(t.surface).border_1().border_color(selection ? t.accent : t.border)
         .child(h_flex().items_center().gap(5)
@@ -1260,7 +1262,7 @@ export default class Annotator extends View {
           .child(h_flex().size(27).rounded(7).bg(t.accent + "18").text_color(t.accent).items_center().justify_center().font_semibold().child("↗"))
           .child(v_flex().flex_1().min_w(0).gap(1)
             .child(div().id("review-session").font_semibold().text_size(12).truncate().child(target ? `To ${chat} · ${target.address}` : "No chat selected"))
-            .child(div().text_size(10.5).text_color(t.dim).child(`${pending.length} comments · ${this.threadQueue.size} GitHub threads ready`)))
+            .child(div().text_size(10.5).text_color(t.dim).child(`${pending.length} comments · ${this.threadQueue.size} ${this.forge} threads ready`)))
           .when(Boolean(target), el => el.child(this.badge(target.status === "idle" ? "Ready" : target.status === "blocked" ? "Needs you" : "Working", target.status === "idle" ? t.ansi2 : t.ansi3)))
           .child(this.button("export-review", "Export…", cx => this.act("export", { threads: [...this.threadQueue.values()] }, cx), batchSize > 0)))
         .child(this.button("send-review", sendLabel, cx => this.sendToSession(cx), batchSize > 0 && reviewTargetReady(target) && !reviewDrafts && !this.reviewNote.uncertain, "primary").w_full().h(33).tooltip(sendBlocked ?? "Send review · ⌘Enter / Ctrl+Enter when no comments are unfinished"))

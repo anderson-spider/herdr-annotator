@@ -1,6 +1,7 @@
 mod executables;
 mod git;
 mod github;
+mod gitlab;
 mod model;
 mod ordering;
 mod ordering_models;

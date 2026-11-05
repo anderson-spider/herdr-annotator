@@ -616,6 +616,23 @@ test("late GitHub reply completion preserves later edits and ignores another che
   assert.equal(h.mod.notice, null);
 });
 
+for (const full of [false, true]) test(`${full ? "full review" : "sidebar"} labels GitLab merge request discussions`, async () => {
+  const h = harness(); h.state.props = full ? { presentation: "full" } : {};
+  h.mod.init({}, h.cx); await h.drain();
+  const thread = { id: "d1", fingerprint: "v1", path: "", line: null, side: "", comments: [{ author: "reviewer", body: "Explain the rollout" }] };
+  h.mod.github = { provider: "gitlab", threads: [thread] }; h.mod.view = "github"; h.mod.render(h.cx);
+  const text = h.nodes.flatMap(n => n.children).filter(c => typeof c === "string");
+  assert.ok(text.includes("GitLab · 1"), "tab is labelled GitLab");
+  assert.ok(!text.includes("GitHub · 1"));
+  assert.ok(text.includes("Merge request discussion"), "general discussions have no file location");
+  h.nodes.filter(n => n.id === "reply-thread-d1").at(-1).events.on_click(null, h.cx); h.mod.render(h.cx);
+  const labels = h.nodes.flatMap(n => n.children).filter(c => typeof c === "string");
+  assert.ok(labels.includes("Post to GitLab"));
+  assert.ok(labels.includes("Posts as your signed-in GitLab account. Does not send to the agent."));
+  h.mod.github = { provider: "gitlab", threads: [] }; h.mod.render(h.cx);
+  assert.ok(h.nodes.some(n => n.children.some(c => typeof c === "string" && c.startsWith("No open MR found"))));
+});
+
 test("missing GitHub CLI guidance does not disable local comment saving or sending", async () => {
   const h = harness(); h.mod.init({}, h.cx); await h.drain();
   h.mod.github = { error: "GitHub CLI (gh) was not found. Install it from https://cli.github.com, then run gh auth login. Local reviews still work.", threads: [] };

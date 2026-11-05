@@ -5,7 +5,7 @@ owns Git reads, anchoring and storage; a thin JavaScript mod draws the native
 panel. Uses **herdr-core (`hc`)**, never the older Herdr TUI plugin system.
 
 Supports branch-wide review, syntax coloring and
-GitHub review threads with explicit replies. No commit controls or full-file editor.
+GitHub review threads and GitLab merge request discussions with explicit replies. No commit controls or full-file editor.
 
 ![Inline review note in Herdr App](../preview.png)
 
@@ -14,6 +14,8 @@ GitHub review threads with explicit replies. No commit controls or full-file edi
 - macOS or Linux, Git, Rust stable (edition 2024).
 - Herdr App with the current mod interface (`TextareaState` support).
 - GitHub CLI (`gh`) authenticated on the app machine for GitHub threads.
+- GitLab CLI (`glab`) authenticated on the app machine for GitLab merge
+  request discussions.
 - `hc` on the Mac/app machine's PATH for remote repos and feedback delivery.
 - Existing connected core machines for remote work. Remote hosts need only Git
   and their existing core, not this binary or mod.
@@ -403,6 +405,28 @@ threads or create top-level PR comments.
 If `gh` is missing, local reviews still work. The GitHub tab links to
 https://cli.github.com and explains how to run `gh auth login` on the app machine.
 Cached threads stay visible, but GitHub actions wait for a successful Refresh.
+
+### GitLab merge requests
+
+When origin/upstream points at GitLab, the same tab is labelled **GitLab** and
+works through the local `glab` CLI: it finds the open merge request whose source
+branch and source project match this checkout, polls every five minutes, and
+offers the same **Fix thread**, **Add to review**, **Reply → Post to GitLab**,
+read/unread and sent/uncertain safeguards. Diff discussions show their file and
+lines; resolvable general merge request discussions show as **Merge request
+discussion** without a location. Individual comments and system notes are not
+listed. GitLab returns no diff hunk, so delivered threads carry path and lines
+only. A location is marked outdated when the discussion was made on an older MR
+version. For fork workflows, `upstream` is the target project and `origin` the
+source project.
+
+Only `gitlab.com` is trusted by default, so `glab` credentials never go to a
+host taken from an arbitrary remote. Allow a self-hosted instance with
+`python3 scripts/install.py --gitlab-host gitlab.example.com` (remembered in
+the install receipt) or `HERDR_ANNOTATOR_GITLAB_HOSTS=gitlab.example.com`
+(comma-separated). SSH ports in remotes are ignored; HTTPS remotes with a port
+must be listed as `host:port`. If `glab` is missing, the tab links to
+https://gitlab.com/gitlab-org/cli and explains `glab auth login --hostname <host>`.
 
 ## Storage and safety
 

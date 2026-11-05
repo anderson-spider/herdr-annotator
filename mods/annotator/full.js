@@ -137,7 +137,7 @@ export function renderFull(self, cx) {
     .child(h_flex().h(44).flex_none().px(16).gap(8).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .child(self.button("full-code", "Code", cx => { self.view = "diff"; cx.notify(); }, true, self.view === "diff" ? "secondary" : "quiet"))
       .child(self.button("full-comments", `Comments · ${comments.length}`, cx => { self.view = "comments"; cx.notify(); }, true, self.view === "comments" ? "secondary" : "quiet"))
-      .child(self.button("full-github", `GitHub · ${threads.length}`, cx => { self.view = "github"; self.refreshGithub(cx); cx.notify(); }, true, self.view === "github" ? "secondary" : "quiet"))
+      .child(self.button("full-github", `${self.forge} · ${threads.length}`, cx => { self.view = "github"; self.refreshGithub(cx); cx.notify(); }, true, self.view === "github" ? "secondary" : "quiet"))
       .child(div().flex_1())
       .when(self.view === "diff", el => el
         .child(self.button("full-syntax", self.syntax ? "Syntax" : "Plain", cx => {
@@ -174,7 +174,7 @@ export function renderFull(self, cx) {
     .when(self.view === "comments", el => el.child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
       .child(pageCards(self, "full-local", unreadItems(comments, self.onlyUnread), c => self.commentCard(c, t, true)))))
     .when(self.view === "github", el => el.child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
-      .child(div().p(14).text_size(12).text_color(t.muted).child(self.github?.error ?? self.github?.pull_request?.url ?? "No open PR found. Refresh checks GitHub now."))
+      .child(div().p(14).text_size(12).text_color(t.muted).child(self.github?.error ?? self.github?.pull_request?.url ?? `No open ${self.changeRequest} found. Refresh checks ${self.forge} now.`))
       .child(pageCards(self, "full-threads", unreadItems(threads, self.onlyUnread), thread => self.githubCard(thread, t)))))
     .when(self.view === "diff" && !self.commentsOpen && activeComments.length > 0, el => el.child(v_flex().id("full-comment-actions").max_h(230).flex_none().overflow_y_scrollbar().bg(t.chrome)
       .child(self.button("full-close-comment", "Close comments", cx => { self.activeComment = null; self.activeCommentIds = null; cx.notify(); }))
